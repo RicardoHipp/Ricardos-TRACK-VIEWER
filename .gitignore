@@ -1,8 +1,9 @@
 # Ignoriere alles
 *
 
-# Aber erlaube diese wichtigen Dateien:
+# Erlaube diese wichtigen Dateien:
 !Ricardos_TRACK_VIEWER.html
-!update.bat
 !.gitignore
 !LICENSE
+!README.md
+!bild.png
