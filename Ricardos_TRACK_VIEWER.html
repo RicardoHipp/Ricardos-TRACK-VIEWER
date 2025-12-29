@@ -1,0 +1,1598 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ricardos Track Viewer</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --surface-color: #1e293b;
+            --accent-color: #38bdf8;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            margin: 0;
+            display: flex;
+            min-height: 100vh;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        header {
+            width: 100%;
+            background-color: var(--surface-color);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            display: flex;
+            justify-content: center;
+        }
+
+        h1 {
+            margin: 0;
+            font-weight: 300;
+            letter-spacing: 0.05em;
+            color: var(--accent-color);
+        }
+
+        .header-btn {
+            justify-self: start;
+            background-color: transparent;
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+        }
+
+        .header-btn:hover {
+            background-color: rgba(56, 189, 248, 0.1);
+        }
+
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            /* Changed from center */
+            width: 100%;
+            max-width: 1400px;
+            /* Wider to fit side-by-side */
+            padding: 2rem;
+            gap: 2rem;
+        }
+
+        .workspace {
+            display: flex;
+            flex-direction: row;
+            align-items: flex-start;
+            justify-content: center;
+            gap: 2rem;
+            width: 100%;
+            display: none;
+            /* Hidden initially, controlled by JS */
+        }
+
+        .upload-zone {
+            width: 100%;
+            max-width: 600px;
+            padding: 3rem;
+            border: 2px dashed var(--text-secondary);
+            border-radius: 1rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background-color: rgba(30, 41, 59, 0.5);
+            margin-top: 10vh;
+            /* Push down a bit */
+        }
+
+        .upload-zone:hover,
+        .upload-zone.dragover {
+            border-color: var(--accent-color);
+            background-color: rgba(56, 189, 248, 0.1);
+            transform: translateY(-2px);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .canvas-container {
+            position: relative;
+            width: 600px;
+            height: 600px;
+            flex-shrink: 0;
+            background-color: var(--surface-color);
+            border-radius: 50%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 0 50px rgba(56, 189, 248, 0.1);
+            overflow: hidden;
+            /* display: none; */
+            /* Hidden until loaded - now controlled by parent .workspace */
+        }
+
+        canvas {
+            width: 100%;
+            height: 100%;
+        }
+
+        .sidebar {
+            flex: 1;
+            /* Take remaining space */
+            min-width: 350px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 1.5rem;
+            /* Allow wrapping only on very small screens, otherwise side-by-side */
+            flex-wrap: wrap;
+        }
+
+        .controls-row>div {
+            flex: 1;
+            /* Reduced min-width to allow side-by-side fitting even in narrower sidebar */
+            min-width: 250px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            /* Back to 3 cols as sidebar is wider */
+            gap: 1rem;
+            width: 100%;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .stat-card {
+            background-color: var(--surface-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.25rem;
+            /* Slightly smaller for sidebar */
+            font-weight: bold;
+            color: var(--accent-color);
+        }
+
+        .stat-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        button {
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: filter 0.2s;
+            margin-top: 0;
+            /* Reset */
+            /* display: none; */
+            /* Removed, buttons are always visible within controls */
+        }
+
+        button:hover {
+            filter: brightness(1.1);
+        }
+
+        /* MODAL STYLES */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(5px);
+            display: flex;
+            /* Hidden by default via JS manually */
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .modal-content {
+            background-color: var(--surface-color);
+            padding: 2rem;
+            border-radius: 1rem;
+            max-width: 450px;
+            width: 90%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 0 50px rgba(56, 189, 248, 0.2);
+            text-align: center;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+
+    <header>
+        <div
+            style="width: 100%; max-width: 1400px; margin: 0 auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; padding: 1.5rem 2rem;">
+            <button class="header-btn" onclick="resetView()">⬅ Load New File</button>
+            <h1>Ricardos <span style="color: white; opacity: 0.8;">TRACK VIEWER</span></h1>
+            <div></div> <!-- Spacer -->
+        </div>
+    </header>
+
+    <div class="container">
+
+        <div class="upload-zone" id="dropZone">
+            <div class="upload-icon">📂</div>
+            <h3>Drag & Drop .thr file here</h3>
+            <p style="color: var(--text-secondary)">or click to browse</p>
+            <input type="file" id="fileInput" accept=".thr">
+        </div>
+
+        <div class="workspace" id="workspace">
+            <!-- Left: Canvas -->
+            <div class="canvas-container" id="canvasContainer">
+                <canvas id="trackCanvas" width="1200" height="1200"
+                    style="position: absolute; top: 0; left: 0;"></canvas>
+                <canvas id="cursorCanvas" width="1200" height="1200"
+                    style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+            </div>
+
+            <!-- Right: Sidebar (Stats + Controls) -->
+            <div class="sidebar">
+
+                <!-- Stats moved here -->
+                <div class="stats" id="statsPanel">
+                    <div class="stat-card">
+                        <div class="stat-value" id="pointCount">0</div>
+                        <div class="stat-label">Points</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="startTheta">0.00</div>
+                        <div class="stat-label">Start Theta</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" id="maxRho">0.00</div>
+                        <div class="stat-label">Max Radius</div>
+                    </div>
+                </div>
+
+                <div class="controls-row">
+                    <!-- Controls moved here -->
+                    <div id="controls" style="background: var(--surface-color); padding: 1.5rem; border-radius: 1rem;">
+                        <h3 style="margin-top: 0; margin-bottom: 1.5rem;">Modify Track</h3>
+
+                        <!-- Start Position Toggle -->
+                        <div style="margin-bottom: 1.5rem;">
+                            <label
+                                style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">Start
+                                Position (Cleaning Direction)</label>
+                            <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                                <label
+                                    style="display: flex; align-items: center; gap: 0.5rem; color: white; cursor: pointer;">
+                                    <input type="radio" name="startPos" value="center" checked
+                                        onchange="applyRotations()" style="accent-color: var(--accent-color);">
+                                    Center (0,0) → Outward
+                                </label>
+                                <label
+                                    style="display: flex; align-items: center; gap: 0.5rem; color: white; cursor: pointer;">
+                                    <input type="radio" name="startPos" value="edge" onchange="applyRotations()"
+                                        style="accent-color: var(--accent-color);">
+                                    Edge (1,0) → Inward
+                                </label>
+                            </div>
+                            <!-- Pre-Clean Checkbox -->
+                            <div style="margin-top: 0.75rem;">
+                                <label
+                                    style="display: flex; align-items: center; gap: 0.5rem; color: #94a3b8; cursor: pointer; font-size: 0.9rem;">
+                                    <input type="checkbox" id="preCleanCheck" onchange="handlePreCleanChange()"
+                                        style="accent-color: #94a3b8;">
+                                    Pre-Clean (Wipe)
+                                </label>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <!-- Cleaning Circles Slider -->
+                            <label
+                                style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">Cleaning
+                                Circles (Integer)</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+                                <input type="range" id="circlesSlider" min="-100" max="100" step="1" value="0"
+                                    style="flex: 1; accent-color: var(--accent-color);">
+                                <input type="number" id="circlesInput" min="-100" max="100" step="1" value="0"
+                                    style="width: 60px; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--text-secondary); color: white; border-radius: 0.5rem; text-align: center;">
+                            </div>
+
+                            <!-- Fine Rotation Slider -->
+                            <div style="margin-bottom: 1.5rem;">
+                                <!-- Fine Rotation Slider -->
+                                <label
+                                    style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">Fine
+                                    Rotation (0-360°)</label>
+                                <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem;">
+                                    <input type="range" id="fineSlider" min="0" max="360" step="1" value="0"
+                                        style="flex: 1; accent-color: var(--accent-color);">
+                                    <input type="number" id="fineInput" min="0" max="360" step="1" value="0"
+                                        style="width: 60px; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--text-secondary); color: white; border-radius: 0.5rem; text-align: center;">
+                                </div>
+
+                                <!-- Track Thickness Slider -->
+                                <label
+                                    style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">Track
+                                    Thickness & Style</label>
+                                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                    <input type="range" id="thicknessSlider" min="1" max="50" step="1" value="15"
+                                        style="flex: 1; accent-color: var(--accent-color);">
+                                    <span id="thicknessValue"
+                                        style="color: var(--text-secondary); font-size: 0.9rem; width: 30px; text-align: right;">15px</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Playback Controls -->
+                        <div
+                            style="margin-bottom: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+                            <label
+                                style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.875rem;">Playback</label>
+
+                            <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem;">
+                                <button id="playBtn" onclick="togglePlay()"
+                                    style="flex: 2; background-color: var(--accent-color);">▶ Play</button>
+                                <button onclick="stopPlay()" style="flex: 1; background-color: #334155; color: white;">■
+                                    Stop</button>
+                            </div>
+
+                            <label
+                                style="display: block; color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 0.75rem;">Speed</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="range" id="speedSlider" min="1" max="100" step="1" value="10"
+                                    style="flex: 1; accent-color: var(--accent-color);">
+                                <span id="speedValue"
+                                    style="color: var(--text-secondary); font-size: 0.8rem; width: 40px; text-align: right;">10x</span>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 1.5rem;">
+                            <button onclick="normalizeTrack()"
+                                style="width: 100%; background-color: var(--surface-color); border: 1px solid var(--text-secondary); color: var(--text-primary);">Reset
+                                to 0</button>
+                            <button onclick="downloadTrack()" style="display: block; width: 100%;">💾 Save Modified
+                                .thr</button>
+                        </div>
+                    </div>
+
+                    <!-- Code Preview -->
+                    <div
+                        style="background: var(--surface-color); padding: 1.5rem; border-radius: 1rem; flex: 1; min-height: 200px; display: flex; flex-direction: column;">
+                        <h3 style="margin-top: 0; margin-bottom: 1rem;">Preview (First 10 lines)</h3>
+                        <pre id="codePreview"
+                            style="background: var(--bg-color); padding: 1rem; border-radius: 0.5rem; font-family: monospace; font-size: 0.8rem; overflow-x: auto; flex: 1; margin: 0; color: #a5b4fc;"></pre>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- FIX START MODAL -->
+    <div id="fixStartModal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 style="margin-top: 0; color: var(--accent-color);">Start Position Suspicious</h2>
+            <p style="color: var(--text-secondary); margin-bottom: 1.5rem; line-height: 1.5;">
+                This track does not start at <strong>0,0</strong> (Center) or <strong>0,1</strong> (Edge).<br>
+                It starts at a rotated position, which might be incorrect.
+            </p>
+            <p style="color: white; margin-bottom: 2rem; background: rgba(0,0,0,0.2); padding: 0.5rem; border-radius: 0.5rem; font-family: monospace;"
+                id="modalCurrentStart">
+                Current Start: ?
+            </p>
+            <div style="display: flex; gap: 1rem; justify-content: center;">
+                <button onclick="confirmFixStart(true)"
+                    style="background-color: var(--accent-color); color: var(--bg-color);">
+                    ✅ Yes, Add Start Point
+                </button>
+                <button onclick="confirmFixStart(false)"
+                    style="background-color: transparent; border: 1px solid var(--text-secondary); color: var(--text-secondary);">
+                    No, keep as is
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+
+        const workspace = document.getElementById('workspace');
+        // Canvas & Context are inside workspace now
+        const canvas = document.getElementById('trackCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Cursor Canvas
+        const cursorCanvas = document.getElementById('cursorCanvas');
+        const cursorCtx = cursorCanvas.getContext('2d');
+
+        // CACHE for Pattern (Optimization)
+        const patternCacheCanvas = document.createElement('canvas');
+        patternCacheCanvas.width = 1200;
+        patternCacheCanvas.height = 1200;
+        const patternCacheCtx = patternCacheCanvas.getContext('2d');
+        let isPatternCacheValid = false;
+        let isCirclePreview = false;
+
+        const circlesSlider = document.getElementById('circlesSlider');
+        const circlesInput = document.getElementById('circlesInput');
+        const thicknessSlider = document.getElementById('thicknessSlider');
+        const thicknessValue = document.getElementById('thicknessValue');
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const fineSlider = document.getElementById('fineSlider');
+        const fineInput = document.getElementById('fineInput');
+        const playBtn = document.getElementById('playBtn');
+        const codePreview = document.getElementById('codePreview');
+        const fixStartModal = document.getElementById('fixStartModal');
+        const modalCurrentStart = document.getElementById('modalCurrentStart');
+
+        function handlePreCleanChange() {
+            const isChecked = document.getElementById('preCleanCheck').checked;
+            if (isChecked) {
+                // Set default value if enabled
+                if (parseInt(circlesSlider.value) === 0) {
+                    circlesSlider.value = 25;
+                    circlesInput.value = 25;
+                }
+            } else {
+                circlesSlider.value = 0;
+                circlesInput.value = 0;
+            }
+            isPatternCacheValid = false; // Layout might change slightly
+            applyRotations();
+        }
+
+        // Sync Sliders and Inputs + Live Update
+        function updateAndApply(source, target) {
+            target.value = source.value;
+            
+            // Special handling for Fine Rotation to avoid lag
+            if (source.id === 'fineSlider' || source.id === 'fineInput') {
+                previewRotation(source.value);
+            } 
+            // Special handling for Circles Slider (Spiral Preview)
+            else if (source.id === 'circlesSlider' || source.id === 'circlesInput') {
+                isCirclePreview = true;
+                
+                // Auto-enable Checkbox if slider moved > 0
+                if (parseInt(source.value) > 0) {
+                    document.getElementById('preCleanCheck').checked = true;
+                }
+                
+                applyRotations(); // Will use cache inside
+            }
+            else {
+                isCirclePreview = false;
+                applyRotations();
+            }
+        }
+        
+        // Commit Circle Change (on mouseup/change)
+        function commitCircles() {
+            isCirclePreview = false;
+            applyRotations(); // Full redraw to be sure
+        }
+
+        // Performance Optimization: CSS Rotation during interaction
+        let storedRotationStart = 0;
+        
+        function previewRotation(degrees) {
+            const deg = parseFloat(degrees);
+            // We rotate the CANVAS element visually. 
+            // The track data remains at the "last committed" state until mouseup.
+            // We need to calculate the delta relative to what's currently drawn.
+            
+            // Actually simpler: 
+            // The canvas currently displays the track at 'storedRotationStart'.
+            // The user wants 'degrees'.
+            // CSS Rotate = degrees - storedRotationStart.
+            
+            const diff = deg - storedRotationStart;
+            canvas.style.transform = `rotate(${diff}deg)`;
+            
+            // Note: The handle is drawn on the canvas, so it rotates WITH the canvas.
+            // We don't need to redraw the handle.
+        }
+
+        function commitRotation() {
+            // 1. Reset CSS transform
+            canvas.style.transform = 'none';
+            
+            // 2. Update the "Base" for the next rotation
+            storedRotationStart = parseFloat(fineSlider.value);
+            
+            // 3. Invalidate Cache because pattern rotated
+            isPatternCacheValid = false;
+
+            // 4. Actually calculate data and redraw pixels
+            applyRotations();
+        }
+
+        circlesSlider.addEventListener('input', (e) => updateAndApply(e.target, circlesInput));
+        circlesSlider.addEventListener('change', (e) => commitCircles()); // Commit on release
+        
+        circlesInput.addEventListener('input', (e) => updateAndApply(e.target, circlesSlider));
+        circlesInput.addEventListener('change', (e) => commitCircles());
+        
+        // Fine Slider: Input = Preview, Change = Commit
+        fineSlider.addEventListener('input', (e) => updateAndApply(e.target, fineInput));
+        fineSlider.addEventListener('change', (e) => commitRotation()); // Commit on release
+        
+        fineInput.addEventListener('input', (e) => updateAndApply(e.target, fineSlider));
+        fineInput.addEventListener('change', (e) => commitRotation()); // Commit on enter/blur
+
+        thicknessSlider.addEventListener('input', (e) => {
+            thicknessValue.textContent = e.target.value + 'px';
+            if (isPlaying) {
+                stopPlay();
+            } else {
+                fullRedraw();
+            }
+        });
+
+        speedSlider.addEventListener('input', (e) => {
+            speedValue.textContent = e.target.value + 'x';
+        });
+
+        // State
+        let currentTrackData = [];
+        let originalTrackData = [];
+        let originalFilename = "track.thr";
+        let pendingTrackData = null; // Temp storage for Modal
+
+        // Playback State
+        let isPlaying = false;
+        let playCursor = { index: 0, t: 0.0 };
+        let lastDrawnPoint = null;
+        let animationId = null;
+
+        function togglePlay() {
+            if (isPlaying) {
+                isPlaying = false;
+                if (animationId) cancelAnimationFrame(animationId);
+                playBtn.textContent = "▶ Play";
+                playBtn.style.backgroundColor = "var(--accent-color)";
+            } else {
+                isPlaying = true;
+                playBtn.textContent = "⏸ Pause";
+                playBtn.style.backgroundColor = "#eab308";
+                
+                // If reset needed (start or restart)
+                if (!lastDrawnPoint || playCursor.index >= currentTrackData.length - 1) {
+                    playCursor = { index: 0, t: 0.0 };
+                    fullRedraw(0); // Clear track from canvas
+                    const startPt = currentTrackData[0];
+                    lastDrawnPoint = getXY(startPt.theta, startPt.rho);
+                }
+                animate();
+            }
+        }
+
+        function stopPlay() {
+            isPlaying = false;
+            if (animationId) cancelAnimationFrame(animationId);
+            playBtn.textContent = "▶ Play";
+            playBtn.style.backgroundColor = "var(--accent-color)";
+            // Show full track
+            fullRedraw();
+            playCursor = { index: currentTrackData.length - 1, t: 1.0 };
+            lastDrawnPoint = null;
+        }
+
+        function animate() {
+            if (!isPlaying) return;
+
+            const speedVal = parseInt(speedSlider.value) || 10;
+            // Move budget per frame
+            const moveBudget = speedVal * 0.01; 
+
+            let remainingMove = moveBudget;
+            const thickness = parseInt(thicknessSlider.value) || 2;
+            const patternIdx = getPatternStartIdx();
+
+            // We use Path2D to collect all segments of this frame to draw them in one go (like the static version)
+            let currentPath = new Path2D();
+            currentPath.moveTo(lastDrawnPoint.x, lastDrawnPoint.y);
+            
+            let currentMode = playCursor.index >= patternIdx ? 'pattern' : 'spiral';
+            let hasPointsInPath = false;
+
+            while (remainingMove > 0 && playCursor.index < currentTrackData.length - 1) {
+                const p1 = currentTrackData[playCursor.index];
+                const p2 = currentTrackData[playCursor.index + 1];
+                
+                const mode = playCursor.index >= patternIdx ? 'pattern' : 'spiral';
+
+                // If mode changes within one frame, flush current path and start new one
+                if (mode !== currentMode) {
+                    if (hasPointsInPath) renderPathBatch(currentPath, currentMode, thickness);
+                    currentPath = new Path2D();
+                    currentPath.moveTo(lastDrawnPoint.x, lastDrawnPoint.y);
+                    currentMode = mode;
+                    hasPointsInPath = false;
+                }
+
+                const dTheta = p2.theta - p1.theta;
+                const dRho = p2.rho - p1.rho;
+                
+                // Approximate segment length
+                const segLen = Math.sqrt(dTheta*dTheta + dRho*dRho * 20); 
+                
+                if (segLen < 0.0001) {
+                    playCursor.index++;
+                    playCursor.t = 0;
+                    continue;
+                }
+                
+                let stepT = Math.min(remainingMove / segLen, 1.0 - playCursor.t);
+                remainingMove -= stepT * segLen;
+
+                const startT = playCursor.t;
+                const nextT = startT + stepT;
+                
+                const frameStartTheta = p1.theta + dTheta * startT;
+                const nextTheta = p1.theta + dTheta * nextT;
+                const frameDTheta = nextTheta - frameStartTheta;
+
+                // Sub-stepping for smoothness
+                const subSteps = Math.ceil(Math.abs(frameDTheta) / 0.05);
+                for (let s = 1; s <= subSteps; s++) {
+                    const factor = s / subSteps;
+                    const iT = startT + (nextT - startT) * factor;
+                    const iXY = getXY(p1.theta + dTheta * iT, p1.rho + dRho * iT);
+                    currentPath.lineTo(iXY.x, iXY.y);
+                    lastDrawnPoint = iXY;
+                }
+                hasPointsInPath = true;
+                
+                playCursor.t = nextT;
+                
+                if (playCursor.t >= 0.9999) {
+                    playCursor.index++;
+                    playCursor.t = 0.0;
+                    if (playCursor.index < currentTrackData.length) {
+                        const pNext = currentTrackData[playCursor.index];
+                        lastDrawnPoint = getXY(pNext.theta, pNext.rho);
+                        currentPath.lineTo(lastDrawnPoint.x, lastDrawnPoint.y);
+                    }
+                }
+            }
+            
+            // Final stroke for the remaining points of this frame
+            if (hasPointsInPath) {
+                renderPathBatch(currentPath, currentMode, thickness);
+            }
+            
+            if (lastDrawnPoint) drawCursorAt(lastDrawnPoint);
+
+            if (playCursor.index >= currentTrackData.length - 1) {
+                stopPlay();
+            } else {
+                animationId = requestAnimationFrame(animate);
+            }
+        }
+
+        // Helper to draw a Path2D with the correct style (matching fullRedraw logic)
+        function renderPathBatch(path, mode, thickness) {
+            ctx.lineCap = (mode === 'spiral') ? 'butt' : 'round';
+            ctx.lineJoin = 'round';
+
+            if (mode === 'spiral') {
+                setSpiralShadowStyle(ctx, thickness);
+                ctx.stroke(path);
+                setSpiralMainStyle(ctx, thickness);
+                ctx.stroke(path);
+            } else {
+                // Two-pass rendering for the pattern
+                setPatternShadowStyle(ctx, thickness);
+                ctx.stroke(path);
+                setPatternHighlightStyle(ctx, thickness);
+                ctx.stroke(path);
+            }
+        }
+
+        // Drawing Constants
+        const CANVAS_WIDTH = 1200;
+        const CANVAS_HEIGHT = 1200;
+        const CENTER_X = CANVAS_WIDTH / 2;
+        const CENTER_Y = CANVAS_HEIGHT / 2;
+        const MAX_RADIUS = (CANVAS_WIDTH / 2) - 20;
+
+        // --- HELPER FUNCTIONS ---
+        function getXY(theta, rho) {
+            return {
+                x: CENTER_X + (rho * MAX_RADIUS) * Math.cos(theta),
+                y: CENTER_Y + (rho * MAX_RADIUS) * Math.sin(theta)
+            };
+        }
+
+        function drawLineSegment(ctx, p1, p2) {
+            let dTheta = p2.theta - p1.theta;
+            let dRho = p2.rho - p1.rho;
+
+            const steps = Math.ceil(Math.abs(dTheta) / 0.1);
+
+            if (steps <= 1) {
+                const nextP = getXY(p2.theta, p2.rho);
+                ctx.lineTo(nextP.x, nextP.y);
+            } else {
+                for (let s = 1; s <= steps; s++) {
+                    const t = s / steps;
+                    const interpTheta = p1.theta + (dTheta * t);
+                    const interpRho = p1.rho + (dRho * t);
+                    const nextP = getXY(interpTheta, interpRho);
+                    ctx.lineTo(nextP.x, nextP.y);
+                }
+            }
+        }
+        let cachedPatternStartIdx = -1;
+        function getPatternStartIdx() {
+            if (cachedPatternStartIdx !== -1) return cachedPatternStartIdx;
+
+            if (originalTrackData.length > 0) {
+                const preCleanActive = document.getElementById('preCleanCheck').checked;
+                const cleaningCircles = parseInt(circlesSlider.value) || 0;
+
+                if (preCleanActive && cleaningCircles > 0) {
+                    cachedPatternStartIdx = currentTrackData.length - originalTrackData.length + findStartIndex(originalTrackData);
+                    return cachedPatternStartIdx;
+                }
+            }
+            if (currentTrackData.length > 0 && originalTrackData.length > 0) {
+                const diff = currentTrackData.length - originalTrackData.length;
+                const origStart = findStartIndex(originalTrackData);
+                if (diff > 0) {
+                    cachedPatternStartIdx = diff + origStart;
+                    return cachedPatternStartIdx;
+                }
+            }
+            cachedPatternStartIdx = 0;
+            return 0;
+        }
+
+        // --- STYLE HELPERS ---
+        function setSpiralShadowStyle(ctx, thickness) {
+            ctx.strokeStyle = '#334155'; // Dark gray border (Slate 700)
+            ctx.lineWidth = thickness;
+            ctx.lineCap = 'butt';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            ctx.globalAlpha = 1.0;
+        }
+
+        function setSpiralMainStyle(ctx, thickness) {
+            ctx.strokeStyle = '#64748b'; // Solid Gray (Slate 500)
+            ctx.lineWidth = Math.max(1, thickness * 0.4); // Thinner to make border look wider
+            ctx.lineCap = 'butt';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = 0; // No shadow as requested
+            ctx.shadowColor = 'transparent';
+            ctx.globalAlpha = 1.0;
+        }
+
+        function setPatternShadowStyle(ctx, thickness) {
+            ctx.strokeStyle = '#020617';
+            ctx.lineWidth = thickness;
+            ctx.lineCap = 'butt';
+            ctx.lineJoin = 'round';
+            ctx.shadowBlur = thickness;
+            ctx.shadowColor = '#000000';
+            ctx.globalAlpha = 0.6;
+        }
+
+        function setPatternHighlightStyle(ctx, thickness) {
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = Math.max(1, thickness * 0.5);
+            ctx.lineCap = 'round';
+            ctx.shadowBlur = thickness * 0.2;
+            ctx.shadowColor = '#bae6fd';
+            ctx.globalAlpha = 1.0;
+        }
+
+        // --- DRAW CURSOR ---
+        function drawCursorAt(pos) {
+            cursorCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            cursorCtx.beginPath();
+            cursorCtx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
+
+            const grad = cursorCtx.createRadialGradient(pos.x - 3, pos.y - 3, 1, pos.x, pos.y, 8);
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(0.5, '#e2e8f0');
+            grad.addColorStop(1, '#94a3b8');
+
+            cursorCtx.fillStyle = grad;
+            cursorCtx.shadowColor = '#000000';
+            cursorCtx.shadowBlur = 10;
+            cursorCtx.fill();
+
+            cursorCtx.beginPath();
+            cursorCtx.arc(pos.x - 3, pos.y - 3, 2, 0, Math.PI * 2);
+            cursorCtx.fillStyle = 'white';
+            cursorCtx.shadowBlur = 0;
+            cursorCtx.fill();
+        }
+
+        function drawCursor(index) {
+            const safeIndex = Math.min(Math.max(0, index), currentTrackData.length - 1);
+            if (safeIndex < 0) return;
+            const pt = currentTrackData[safeIndex];
+            drawCursorAt(getXY(pt.theta, pt.rho));
+        }
+
+        // --- DRAW SEGMENT (Incremental) ---
+        function drawSegment(startIndex, endIndex, targetCtx = null) {
+            const c = targetCtx || ctx; // Use provided context or global default
+            
+            if (startIndex >= endIndex) return;
+            if (currentTrackData.length < 2) return;
+
+            const thickness = parseInt(thicknessSlider.value) || 2;
+            const patternStartIdx = getPatternStartIdx();
+
+            // 1. Draw Spiral Part (Two Pass)
+            const spiralEnd = Math.min(patternStartIdx, endIndex);
+            const spiralStart = Math.min(patternStartIdx, startIndex);
+
+            if (spiralStart < spiralEnd) {
+                // Construct Path for Spiral Segment
+                const spiralPath = new Path2D();
+                let startP = getXY(currentTrackData[spiralStart].theta, currentTrackData[spiralStart].rho);
+                spiralPath.moveTo(startP.x, startP.y);
+
+                for (let i = spiralStart; i < spiralEnd; i++) {
+                    const pNext = getXY(currentTrackData[i+1].theta, currentTrackData[i+1].rho);
+                    // Simple interpolation for static view (to avoid visible edges on large curves)
+                    let p1 = currentTrackData[i];
+                    let p2 = currentTrackData[i+1];
+                    let dTheta = p2.theta - p1.theta;
+                    const steps = Math.ceil(Math.abs(dTheta) / 0.1);
+                    if (steps <= 1) {
+                         spiralPath.lineTo(pNext.x, pNext.y);
+                    } else {
+                        let dRho = p2.rho - p1.rho;
+                        for (let s = 1; s <= steps; s++) {
+                            const t = s / steps;
+                            const iP = getXY(p1.theta + dTheta * t, p1.rho + dRho * t);
+                            spiralPath.lineTo(iP.x, iP.y);
+                        }
+                    }
+                }
+                
+                // Pass 1: Shadow/Border
+                setSpiralShadowStyle(c, thickness);
+                c.stroke(spiralPath);
+                
+                // Pass 2: Main Fill
+                setSpiralMainStyle(c, thickness);
+                c.stroke(spiralPath);
+            }
+
+            // 2. Draw Pattern Part (Two Pass)
+            const patternStart = Math.max(patternStartIdx, startIndex);
+            const patternEnd = endIndex;
+
+            if (patternStart < patternEnd) {
+                const BATCH_SIZE = 50;
+                let currentIdx = patternStart;
+
+                while (currentIdx < patternEnd) {
+                    const batchEnd = Math.min(currentIdx + BATCH_SIZE, patternEnd);
+                    
+                    // Construct Path for Batch
+                    const patternPath = new Path2D();
+                    let p = currentTrackData[currentIdx];
+                    let startP = getXY(p.theta, p.rho);
+                    patternPath.moveTo(startP.x, startP.y);
+
+                    for (let i = currentIdx; i < batchEnd; i++) {
+                        let p1 = currentTrackData[i];
+                        let p2 = currentTrackData[i+1];
+                         let dTheta = p2.theta - p1.theta;
+                        const steps = Math.ceil(Math.abs(dTheta) / 0.1);
+                        if (steps <= 1) {
+                            const nextP = getXY(p2.theta, p2.rho);
+                            patternPath.lineTo(nextP.x, nextP.y);
+                        } else {
+                            let dRho = p2.rho - p1.rho;
+                            for (let s = 1; s <= steps; s++) {
+                                const t = s / steps;
+                                const iP = getXY(p1.theta + dTheta * t, p1.rho + dRho * t);
+                                patternPath.lineTo(iP.x, iP.y);
+                            }
+                        }
+                    }
+
+                    // Pass A: Shadow
+                    setPatternShadowStyle(c, thickness);
+                    c.stroke(patternPath);
+
+                    // Pass B: Highlight
+                    setPatternHighlightStyle(c, thickness);
+                    c.stroke(patternPath);
+
+                    currentIdx = batchEnd;
+                }
+            }
+        }
+
+        // --- FULL REDRAW ---
+        function fullRedraw(limitIndex = -1) {
+            const limit = (limitIndex === -1 || limitIndex > currentTrackData.length) ? currentTrackData.length : limitIndex;
+            const patternIdx = getPatternStartIdx();
+            const thickness = parseInt(thicknessSlider.value) || 2;
+
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Background Circle
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 2;
+            ctx.arc(CENTER_X, CENTER_Y, MAX_RADIUS, 0, Math.PI * 2);
+            ctx.shadowBlur = 0;
+            ctx.stroke();
+
+            if (currentTrackData.length < 2) return;
+
+            // --- OPTIMIZED RENDERING ---
+            if (isCirclePreview && isPatternCacheValid && patternIdx > 0 && limitIndex === -1) {
+                // 1. Draw cached pattern (super fast)
+                ctx.drawImage(patternCacheCanvas, 0, 0);
+                
+                // 2. Draw ONLY the new spiral
+                drawSegment(0, patternIdx);
+            } else {
+                // Full Render (or Cache Invalid)
+                
+                if (isCirclePreview && !isPatternCacheValid && patternIdx > 0 && limitIndex === -1) {
+                    // Update Cache first
+                    patternCacheCtx.clearRect(0,0,1200,1200);
+                    // Draw pattern into cache using targetCtx
+                    drawSegment(patternIdx, currentTrackData.length - 1, patternCacheCtx);
+                    
+                    isPatternCacheValid = true;
+                }
+                
+                // Normal Drawing Order: Spiral -> Pattern
+                
+                if (isCirclePreview && isPatternCacheValid && limitIndex === -1) {
+                    // Draw Spiral
+                    drawSegment(0, patternIdx);
+                    // Draw Cached Pattern on top
+                    ctx.drawImage(patternCacheCanvas, 0, 0);
+                } else {
+                    // Standard full redraw (non-preview or partial limit)
+                    drawSegment(0, limit - 1);
+                    
+                    // If this was a full commit render, validate cache for next time
+                    if (limitIndex === -1 && !isPatternCacheValid) {
+                         patternCacheCtx.clearRect(0,0,1200,1200);
+                         drawSegment(patternIdx, currentTrackData.length - 1, patternCacheCtx);
+                         isPatternCacheValid = true;
+                    }
+                }
+            }
+
+            drawRotationHandle();
+            lastRenderedIndex = limit - 1;
+            if (lastRenderedIndex < 0) lastRenderedIndex = 0;
+            drawCursor(limit - 1);
+        }
+
+        function drawRotationHandle() {
+            const fineVal = parseFloat(fineSlider.value) || 0;
+            const handleAngle = (fineVal / 360) * Math.PI * 2;
+            const handleX = CENTER_X + MAX_RADIUS * Math.cos(handleAngle);
+            const handleY = CENTER_Y + MAX_RADIUS * Math.sin(handleAngle);
+
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1.0;
+            ctx.arc(CENTER_X, CENTER_Y, MAX_RADIUS, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.fillStyle = '#38bdf8';
+            ctx.shadowColor = 'rgba(56, 189, 248, 0.8)';
+            ctx.shadowBlur = 15;
+            ctx.arc(handleX, handleY, 12, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowBlur = 0;
+            ctx.arc(handleX, handleY, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            if (showRotationHint) {
+                const hintDist = MAX_RADIUS - 70;
+                const hintX = CENTER_X + hintDist * Math.cos(handleAngle);
+                const hintY = CENTER_Y + hintDist * Math.sin(handleAngle);
+
+                ctx.font = 'bold 16px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                const text = "Drag to Rotate";
+                const metrics = ctx.measureText(text);
+                const bw = metrics.width + 24;
+                const bh = 34;
+
+                ctx.beginPath();
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)';
+                ctx.lineWidth = 2;
+                ctx.moveTo(hintX, hintY);
+                ctx.lineTo(handleX, handleY);
+                ctx.stroke();
+
+                ctx.fillStyle = '#1e293b';
+                ctx.strokeStyle = '#38bdf8';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.shadowBlur = 0;
+                ctx.roundRect(hintX - bw / 2, hintY - bh / 2, bw, bh, 8);
+                ctx.fill();
+                ctx.stroke();
+
+                ctx.fillStyle = '#f8fafc';
+                ctx.fillText(text, hintX, hintY);
+            }
+        }
+
+        // --- LOGIC & INTERACTION ---
+
+        function applyRotations(forceRaw = false) {
+            cachedPatternStartIdx = -1;
+
+            const cleaningCircles = parseInt(circlesSlider.value) || 0;
+            const degrees = parseFloat(fineSlider.value) || 0;
+            const doPreClean = document.getElementById('preCleanCheck').checked;
+
+            // 1. Find Pattern Start Index & Theta in Original Data
+            const idx = findStartIndex(originalTrackData);
+            if (idx >= originalTrackData.length) return; 
+
+            const currentPatternStartTheta = originalTrackData[idx].theta;
+            let targetStartTheta;
+
+            if (forceRaw) {
+                // RAW MODE: Use exact file theta. Delta will be 0.
+                targetStartTheta = currentPatternStartTheta;
+
+                // Reverse-Engineer Slider Values for UI
+                const currentRotations = targetStartTheta / (Math.PI * 2);
+                const circles = Math.floor(currentRotations);
+                let remainder = currentRotations - circles;
+                if (remainder < 0) remainder += 1; 
+                let degrees = Math.round(remainder * 360);
+                if (degrees === 360) degrees = 0;
+
+                circlesSlider.value = circles;
+                circlesInput.value = circles;
+                fineSlider.value = degrees;
+                fineInput.value = degrees;
+                
+                // Auto-Detect Start Position (Rho)
+                let startRho = originalTrackData[idx].rho;
+                const startPosRadios = document.getElementsByName('startPos');
+                if (startRho > 0.5) {
+                    for (const r of startPosRadios) { if (r.value === 'center') r.checked = true; }
+                } else {
+                    for (const r of startPosRadios) { if (r.value === 'edge') r.checked = true; }
+                }
+
+            } else {
+                // NORMAL MODE: Use Slider values
+                const totalRotations = cleaningCircles + (degrees / 360.0);
+                targetStartTheta = totalRotations * Math.PI * 2;
+            }
+
+            // 3. Calculate Delta and Shift Pattern
+            const delta = targetStartTheta - currentPatternStartTheta;
+            let patternPoints = [];
+            
+            if (forceRaw) {
+                 patternPoints = originalTrackData.map(p => ({...p}));
+            } else {
+                for (let i = idx; i < originalTrackData.length; i++) {
+                    let p = { ...originalTrackData[i] };
+                    p.theta += delta;
+                    patternPoints.push(p);
+                }
+            }
+
+            currentTrackData = [];
+
+            // 4. Generate Pre-Clean Spiral (Simple Points)
+            if (doPreClean) {
+                const startPos = document.querySelector('input[name="startPos"]:checked').value;
+                
+                // ALWAYS Clean the full table: From Start to Opposite
+                const wipeStartRho = startPos === 'edge' ? 1.0 : 0.0;
+                const wipeEndRho = (wipeStartRho > 0.5) ? 0.0 : 1.0;
+                const patternStartRho = patternPoints.length > 0 ? patternPoints[0].rho : (startPos === 'edge' ? 0.0 : 1.0);
+
+                // 1. Cleaning Spiral (Full Swipe)
+                // Start Point
+                currentTrackData.push({ theta: 0.0, rho: wipeStartRho });
+                // End Point of Spiral
+                currentTrackData.push({ theta: targetStartTheta, rho: wipeEndRho });
+                
+                cachedPatternStartIdx = 1;
+
+                // 2. Transfer Line (if needed)
+                if (Math.abs(wipeEndRho - patternStartRho) > 0.001) {
+                    currentTrackData.push({ theta: targetStartTheta, rho: patternStartRho });
+                }
+
+                // Append Pattern (avoid duplicate point at join)
+                if (patternPoints.length > 0) {
+                    const last = currentTrackData[currentTrackData.length - 1];
+                    const first = patternPoints[0];
+                    if (Math.abs(last.theta - first.theta) < 0.001 && Math.abs(last.rho - first.rho) < 0.001) {
+                        patternPoints.shift();
+                    }
+                }
+                currentTrackData = currentTrackData.concat(patternPoints);
+
+            } else {
+                // No Clean. Just Pattern (Shifted).
+                currentTrackData = [...patternPoints];
+                cachedPatternStartIdx = 0;
+
+                // FORCE START POINT Logic:
+                // Even without cleaning spiral, we want to respect the "Start Position" selection (Center/Edge).
+                // If the pattern doesn't start exactly there, insert the start point.
+                
+                const startPos = document.querySelector('input[name="startPos"]:checked').value;
+                const desiredStartRho = startPos === 'edge' ? 1.0 : 0.0;
+                
+                let needStartPoint = true;
+                
+                if (currentTrackData.length > 0) {
+                    const firstP = currentTrackData[0];
+                    // Check if pattern already starts at desired position (tolerance 0.05)
+                    if (Math.abs(firstP.rho - desiredStartRho) < 0.05 && Math.abs(firstP.theta) < 0.1) {
+                        needStartPoint = false;
+                    }
+                }
+                
+                if (needStartPoint) {
+                    // Add Start Point at 0,0 or 0,1
+                    currentTrackData.unshift({ theta: 0.0, rho: desiredStartRho });
+                    cachedPatternStartIdx = 1;
+                }
+            }
+
+            // Final Safety
+            if (currentTrackData.length === 0) currentTrackData.push({ theta: 0, rho: 0 });
+            
+            // Reset Animation because track changed
+            stopPlay();
+            playCursor = { index: 0, t: 0.0 };
+            lastDrawnPoint = null;
+            
+            fullRedraw();
+            updateStats();
+        }
+
+
+
+        function resetView() {
+            workspace.style.display = 'none';
+            dropZone.style.display = 'block';
+            fileInput.value = '';
+        }
+
+        function handleFile(file) {
+            originalFilename = file.name;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const tempTrack = parseTrackPoints(e.target.result);
+
+                // 1. Check for Missing Start Point
+                if (tempTrack.length > 0) {
+                    const firstP = tempTrack[0];
+                    if (Math.abs(firstP.theta) > 0.1) {
+                        // Found suspicious start!
+                        pendingTrackData = tempTrack;
+                        modalCurrentStart.textContent = `Current Start: ${firstP.theta.toFixed(5)} ${firstP.rho.toFixed(5)}`;
+                        fixStartModal.classList.add('active');
+                        return; // Halt loading until user confirms
+                    }
+                }
+
+                finishLoading(tempTrack);
+            };
+            reader.readAsText(file);
+        }
+
+        function confirmFixStart(shouldFix) {
+            fixStartModal.classList.remove('active');
+            let track = pendingTrackData;
+
+            if (shouldFix && track.length > 0) {
+                const firstP = track[0];
+                let startRho = 0.0;
+
+                // Smart Logic:
+                // If checking for "large rotation" (Spiral Candidate), we should start at the OPPOSITE Rho 
+                // to create a valid "Wipe" (Spiral) that the detector will recognize.
+                const isHighRotation = Math.abs(firstP.theta) > 4 * Math.PI;
+                const patternStartsAtEdge = firstP.rho > 0.5;
+
+                if (isHighRotation) {
+                    // Invert Rho to create spiral
+                    startRho = patternStartsAtEdge ? 0.0 : 1.0;
+                } else {
+                    // Safe Start (match pattern)
+                    startRho = patternStartsAtEdge ? 1.0 : 0.0;
+                }
+
+                // Determine best start point
+                const newStart = { theta: 0.0, rho: startRho };
+                track = [newStart, ...track];
+            }
+
+            finishLoading(track);
+        }
+
+        function finishLoading(track) {
+            // Detect Existing Sparse Cleaning Spiral
+            const detected = detectExistingCleaning(track);
+
+            originalTrackData = detected.cleanTrack;
+
+            // Set UI
+            if (detected.found) {
+                document.getElementById('preCleanCheck').checked = true;
+                circlesSlider.value = detected.circles;
+                circlesInput.value = detected.circles;
+                const startPosRadios = document.getElementsByName('startPos');
+                if (detected.patternStartRho > 0.5) {
+                    for (const r of startPosRadios) { if (r.value === 'center') r.checked = true; }
+                } else {
+                    for (const r of startPosRadios) { if (r.value === 'edge') r.checked = true; }
+                }
+            } else {
+                document.getElementById('preCleanCheck').checked = false;
+                // analyzeCurrentRotation(); <-- REMOVED
+            }
+
+            // Initial Apply with Force Raw to preserve file exactness
+            applyRotations(true);
+            updateStats();
+
+            // UI Transitions
+            dropZone.style.display = 'none';
+            workspace.style.display = 'flex';
+
+            setTimeout(() => {
+                document.getElementById('statsPanel').style.opacity = '1';
+            }, 50);
+        }
+
+        function parseTrackPoints(text) {
+            const points = [];
+            const lines = text.split('\n');
+            lines.forEach(line => {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length >= 2) {
+                    const theta = parseFloat(parts[0]);
+                    const rho = parseFloat(parts[1]);
+                    if (!isNaN(theta) && !isNaN(rho)) {
+                        // Deduplication: Skip if identical to the previous point
+                        if (points.length > 0) {
+                            const last = points[points.length - 1];
+                            if (Math.abs(last.theta - theta) < 0.000001 && Math.abs(last.rho - rho) < 0.000001) {
+                                return; // Skip duplicate
+                            }
+                        }
+                        points.push({ theta, rho });
+                    }
+                }
+            });
+            return points;
+        }
+
+        // ... detectExistingCleaning ...
+        function detectExistingCleaning(track) {
+            if (track.length < 2) return { found: false, cleanTrack: track };
+
+            const p0 = track[0];
+            const p1 = track[1];
+
+            const dTheta = Math.abs(p1.theta - p0.theta);
+            const dRho = Math.abs(p1.rho - p0.rho);
+
+            if (dTheta > 4 * Math.PI && dRho > 0.8) {
+                const circles = Math.round(dTheta / (2 * Math.PI));
+                const patternStartRho = p1.rho;
+                return {
+                    found: true,
+                    circles: circles,
+                    patternStartRho: patternStartRho,
+                    cleanTrack: track.slice(1)
+                };
+            }
+
+            return { found: false, cleanTrack: track };
+        }
+
+        function findStartIndex(data) {
+            for (let i = 0; i < data.length; i++) {
+                if (Math.abs(data[i].theta) < 0.001 && Math.abs(data[i].rho) < 0.001) {
+                    continue;
+                }
+                return i;
+            }
+            return 0;
+        }
+
+        function analyzeCurrentRotation() {
+            if (originalTrackData.length === 0) return;
+
+            const idx = findStartIndex(originalTrackData);
+            let startTheta = originalTrackData[idx] ? originalTrackData[idx].theta : 0;
+
+            const currentRotations = startTheta / (Math.PI * 2);
+
+            // Split into Integer and Fine
+            const circles = Math.floor(currentRotations);
+            let remainder = currentRotations - circles;
+            if (remainder < 0) remainder += 1; // Normalize to 0-1
+
+            let degrees = Math.round(remainder * 360);
+            if (degrees === 360) { degrees = 0; }
+
+            circlesSlider.value = circles;
+            circlesInput.value = circles;
+            fineSlider.value = degrees;
+            fineInput.value = degrees;
+
+            // Auto-Detect Start Position
+            let startRho = originalTrackData[idx] ? originalTrackData[idx].rho : 0;
+            const startPosRadios = document.getElementsByName('startPos');
+
+            if (startRho > 0.5) {
+                // Pattern starts Outside -> We start Inside (Center)
+                for (const r of startPosRadios) { if (r.value === 'center') r.checked = true; }
+            } else {
+                // Pattern starts Inside -> We start Outside (Edge)
+                for (const r of startPosRadios) { if (r.value === 'edge') r.checked = true; }
+            }
+        }
+
+        function normalizeTrack() {
+            circlesSlider.value = 0;
+            circlesInput.value = 0;
+            fineSlider.value = 0;
+            fineInput.value = 0;
+            applyRotations();
+        }
+
+        function downloadTrack() {
+            let content = "";
+            const doPreClean = document.getElementById('preCleanCheck').checked;
+            const cleaningCircles = parseInt(circlesSlider.value) || 0;
+
+            // Check if we need to simplify output (Dense Spiral -> 2 lines)
+            if (doPreClean && cleaningCircles > 0) {
+                const patternStartIdx = getPatternStartIdx();
+
+                // Write Spiral Start
+                if (patternStartIdx > 0) {
+                    const pStart = currentTrackData[0];
+                    content += `${pStart.theta.toFixed(5)} ${pStart.rho.toFixed(5)}\n`;
+                }
+
+                // Write Spiral End (which is Pattern Start)
+                if (currentTrackData.length > patternStartIdx) {
+                    // Actually, if we are in 2-Point mode, finding the pattern start index is clearer.
+                    // But currentTrackData is ALREADY 2 points + pattern.
+                    // So we can just output it all.
+                    // The previous logic was trying to downsample a dense spiral.
+                    // Now the spiral IS simple.
+                }
+
+                // Since applyRotations now generates sparse 2-point spiral, 
+                // we don't need magic here. Just dump the track.
+                currentTrackData.forEach(p => {
+                    content += `${p.theta.toFixed(5)} ${p.rho.toFixed(5)}\n`;
+                });
+
+            } else {
+                currentTrackData.forEach(p => {
+                    content += `${p.theta.toFixed(5)} ${p.rho.toFixed(5)}\n`;
+                });
+            }
+
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+
+            const nameParts = originalFilename.split('.');
+            let newName = "track_modified.thr";
+            if (nameParts.length > 1) {
+                const ext = nameParts.pop();
+                newName = nameParts.join('.') + `_mod.${ext}`;
+            }
+
+            a.href = url;
+            a.download = newName;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        }
+
+        // Canvas Interaction
+        let isDragging = false;
+        let showRotationHint = true;
+        canvas.style.cursor = 'grab';
+
+        function getAngleFromEvent(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const x = clientX - centerX;
+            const y = clientY - centerY;
+            let theta = Math.atan2(y, x);
+            if (theta < 0) theta += Math.PI * 2;
+            return (theta / (Math.PI * 2)) * 360;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            if (showRotationHint) showRotationHint = false;
+            canvas.style.cursor = 'grabbing';
+            handleDrag(e);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDragging = true;
+            if (showRotationHint) showRotationHint = false;
+            handleDrag(e);
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                handleDrag(e);
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                canvas.style.cursor = 'grab';
+                commitRotation(); // Commit changes on release
+            }
+        });
+
+        window.addEventListener('touchmove', (e) => {
+            if (isDragging) {
+                e.preventDefault();
+                handleDrag(e);
+            }
+        }, { passive: false });
+
+        window.addEventListener('touchend', () => { 
+            if (isDragging) {
+                isDragging = false; 
+                commitRotation(); // Commit changes on release
+            }
+        });
+
+        function handleDrag(e) {
+            const angle = getAngleFromEvent(e);
+            fineSlider.value = Math.round(angle);
+            fineInput.value = Math.round(angle);
+            previewRotation(Math.round(angle)); // Use CSS preview
+        }
+
+        function updateStats() {
+            // Update stored base rotation whenever we properly calculate stats/redraw
+            // This ensures the next CSS rotation starts from the correct visual baseline
+            storedRotationStart = parseFloat(fineSlider.value) || 0;
+            
+            const doPreClean = document.getElementById('preCleanCheck').checked;
+            const cleaningCircles = parseInt(circlesSlider.value) || 0;
+            let displayCount = currentTrackData.length;
+
+            // Stats logic is now simpler because currentTrackData is sparse
+            // No need to subtract dense points
+            document.getElementById('pointCount').textContent = displayCount.toLocaleString();
+
+            if (currentTrackData.length > 0) {
+                const idx = findStartIndex(currentTrackData);
+
+                const startTheta = currentTrackData[idx] ? currentTrackData[idx].theta : 0;
+                document.getElementById('startTheta').textContent = startTheta.toFixed(2);
+
+                const maxR = Math.max(...currentTrackData.map(p => p.rho));
+                document.getElementById('maxRho').textContent = maxR.toFixed(4);
+
+                let previewText = "";
+                const linesToShow = Math.min(15, currentTrackData.length);
+                for (let i = 0; i < linesToShow; i++) {
+                    const p = currentTrackData[i];
+                    previewText += `${i + 1}: ${p.theta.toFixed(5)} ${p.rho.toFixed(5)}\n`;
+                }
+
+                if (displayCount > 15) {
+                    previewText += `... (${displayCount - linesToShow} more lines)`;
+                }
+                codePreview.textContent = previewText;
+            }
+        }
+
+        // Event Listeners for File Upload
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length) handleFile(files[0]);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+
+    </script>
+</body>
+
+</html>

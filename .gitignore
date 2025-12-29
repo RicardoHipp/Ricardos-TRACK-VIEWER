@@ -1,0 +1,7 @@
+# Ignoriere alles
+*
+
+# Aber erlaube den Viewer und das Update-Skript
+!Ricardos_TRACK_VIEWER.html
+!update.bat
+!.gitignore
