@@ -1,16 +1,20 @@
-# Ricardos Track Viewer
+# Ricardo's Track Viewer
 
-Ein interaktives Tool zum Visualisieren und Bearbeiten von `.thr` Dateien für Sandtische (Sisyphus, etc.).
+An interactive tool to visualize and modify `.thr` files for sand tables (Sisyphus, etc.).
 
-## Vorschau
+## Preview
 
-![Vorschau des Viewers](bild.png)
+![Viewer Preview](bild.png)
 
-## Funktionen
-- **Visualisierung:** Zeigt Theta-Rho Pfade live an.
-- **Pre-Clean:** Fügt automatisch eine Reinigungs-Spirale hinzu.
-- **Modifikation:** Drehen, Startpunkt anpassen und Reinigungs-Parameter ändern.
-- **Export:** Speichert die modifizierte `.thr` Datei.
+## Features
+- **Visualization:** View Theta-Rho paths in real-time.
+- **Pre-Clean (Wipe):** Automatically adds a cleaning spiral (wipe) to the start of your track.
+- **Live Modification:** Rotate patterns, adjust start positions, and change cleaning parameters.
+- **Fast Performance:** Optimized rendering using canvas layering and CSS transforms for smooth interaction.
+- **Export:** Save your modified tracks back to `.thr` format.
 
-## Lizenz
-MIT License
+## How to use
+Simply drag and drop a `.thr` file onto the web interface to get started.
+
+## License
+[MIT License](LICENSE)
