@@ -639,7 +639,7 @@ function drawCursorAt(pos, angle = null, isSelection = false) {
         cursorCtx.lineTo(10, -8);
         cursorCtx.lineTo(10, 8);
         cursorCtx.closePath();
-        cursorCtx.fillStyle = (isPlaying && !isSelection) ? '#eab308' : primaryColor; 
+        cursorCtx.fillStyle = '#eab308'; // Always Yellow for best contrast
         cursorCtx.shadowColor = 'black';
         cursorCtx.shadowBlur = 4;
         cursorCtx.fill();
