@@ -1,7 +1,7 @@
 # Ignoriere alles
 *
 
-# Aber schau in Ordner hinein (wichtig!)
+# Aber schau in Ordner hinein
 !*/
 
 # Erlaube diese wichtigen Dateien im Hauptverzeichnis:
@@ -10,8 +10,10 @@
 !LICENSE
 !README.md
 !bild.png
-!update.bat
 
 # Erlaube explizit den Inhalt dieser Ordner:
 !JS/**
 !CSS/**
+
+# Update.bat explizit ignorieren (Sicherheitshalber)
+update.bat
