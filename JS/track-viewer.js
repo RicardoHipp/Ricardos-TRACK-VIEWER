@@ -58,6 +58,8 @@ progressSlider.addEventListener('input', (e) => {
     updateCodeScroll(idx);
 });
 const codePreview = document.getElementById('codePreview');
+const rangeActions = document.getElementById('rangeActions');
+const rangeCount = document.getElementById('rangeCount');
 const fixStartModal = document.getElementById('fixStartModal');
 const modalCurrentStart = document.getElementById('modalCurrentStart');
 
@@ -70,6 +72,9 @@ let pendingTrackData = null;
 let showRotationHint = true;
 let undoStack = [];
 let selectedIndex = -1;
+let p1Index = -1;
+let p2Index = -1;
+let previewPath = null;
 
 // Playback State
 let isPlaying = false;
@@ -283,6 +288,8 @@ function confirmFixStart(shouldFix) {
 function finishLoading(track) {
     isPatternCacheValid = false;
     patternCacheCtx.clearRect(0, 0, 1200, 1200);
+    undoStack = []; // Clear undo history for the new file
+    updateUndoButton(); // Reset the UI label
     const detected = detectExistingCleaning(track);
     originalTrackData = detected.cleanTrack;
     if (detected.found) {
@@ -458,11 +465,42 @@ function updateCodeScroll(currentIndex) {
         
         let classes = 'code-line';
         let content = `<span>${lineText}</span>`;
+        let buttons = '';
+
+        // Check if this is P1 or P2
+        if (i === p1Index) {
+            classes += ' marker-p1';
+            content = `<span class="marker-badge p1-badge">P1</span> ` + content;
+        } else if (i === p2Index) {
+            classes += ' marker-p2';
+            content = `<span class="marker-badge p2-badge">P2</span> ` + content;
+        }
+
+        // Highlight range
+        if (p1Index !== -1 && p2Index !== -1) {
+            const s = Math.min(p1Index, p2Index);
+            const e = Math.max(p1Index, p2Index);
+            if (i > s && i < e) {
+                classes += ' selected-range';
+            }
+        }
         
-        // Priority: Red Selection with trash can
+        // Selection Logic (Current Interaction Target)
         if (i === selectedIndex) {
             classes += ' selected';
-            content += `<button class="delete-btn" title="Delete Point">🗑️</button>`;
+            
+            // Trash Button
+            buttons += `<button class="action-btn delete-btn" title="Delete Point">🗑️</button>`;
+            
+            // P1 Button (Show if not already P1)
+            if (i !== p1Index) {
+                buttons += `<button class="action-btn set-p1-btn" title="Set Start Point (P1)">🚩 A</button>`;
+            }
+            
+            // P2 Button (Show only if P1 is set and this is not P1/P2)
+            if (p1Index !== -1 && i !== p1Index && i !== p2Index) {
+                buttons += `<button class="action-btn set-p2-btn" title="Set End Point (P2)">🏁 B</button>`;
+            }
         } 
         
         // Also Blue Highlight for the playhead/view limit
@@ -470,7 +508,7 @@ function updateCodeScroll(currentIndex) {
             classes += ' highlight-line';
         }
         
-        html += `<div class="${classes}" data-index="${i}">${content}</div>`;
+        html += `<div class="${classes}" data-index="${i}">${content}<div style="display:flex; gap:4px;">${buttons}</div></div>`;
     }
     codePreview.innerHTML = html;
 }
@@ -688,6 +726,39 @@ function drawCursor(index) {
         }
         drawCursorAt(posSel, angleSel, true); // isSelection = true (Red)
     }
+
+    // 3. Draw P1 and P2 Markers
+    if (p1Index !== -1 && p1Index < currentTrackData.length) {
+        drawMarker(p1Index, "P1", "#22c55e"); // Green
+    }
+    if (p2Index !== -1 && p2Index < currentTrackData.length) {
+        drawMarker(p2Index, "P2", "#e11d48"); // Red
+    }
+}
+
+function drawMarker(index, label, color) {
+    const p = currentTrackData[index];
+    const pos = getXY(p.theta, p.rho);
+    
+    cursorCtx.save();
+    cursorCtx.translate(pos.x, pos.y);
+    
+    // Pin/Flag shape
+    cursorCtx.beginPath();
+    cursorCtx.moveTo(0, 0);
+    cursorCtx.lineTo(-10, -25);
+    cursorCtx.lineTo(10, -25);
+    cursorCtx.closePath();
+    cursorCtx.fillStyle = color;
+    cursorCtx.fill();
+    
+    // Label
+    cursorCtx.font = "bold 14px sans-serif";
+    cursorCtx.fillStyle = "white";
+    cursorCtx.textAlign = "center";
+    cursorCtx.fillText(label, 0, -30);
+    
+    cursorCtx.restore();
 }
 
 function drawSegment(startIndex, endIndex, targetCtx = null) {
@@ -777,6 +848,27 @@ function fullRedraw(limitIndex = -1) {
         }
     }
     drawRotationHandle(); 
+
+    // Draw Preview Path (Red smoothed line) - DRAW ON TOP OF EVERYTHING ELSE
+    if (previewPath && previewPath.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        const startP = getXY(previewPath[0].theta, previewPath[0].rho);
+        ctx.moveTo(startP.x, startP.y);
+        for(let i=1; i<previewPath.length; i++) {
+             const p = getXY(previewPath[i].theta, previewPath[i].rho);
+             ctx.lineTo(p.x, p.y);
+        }
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineWidth = 5; // Thicker
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = 'rgba(244, 63, 94, 0.8)';
+        ctx.stroke();
+        ctx.restore();
+    }
+
     drawCursor(targetIndex);
 }
 
@@ -965,22 +1057,29 @@ codePreview.addEventListener('wheel', (e) => {
 
 // --- UNDO & DELETE LOGIC ---
 
+function updateUndoButton() {
+    const btn = document.getElementById('undoBtn');
+    if (btn) btn.textContent = `↩ (${undoStack.length})`;
+}
+
 function saveUndoState() {
     // Limit stack size to 50 to save memory
     if (undoStack.length > 50) undoStack.shift();
     // Deep copy current track data
     undoStack.push(currentTrackData.map(p => ({...p})));
+    updateUndoButton();
 }
 
 function undo() {
     if (undoStack.length === 0) return;
     currentTrackData = undoStack.pop();
+    updateUndoButton();
     selectedIndex = -1; // Reset selection
     
-    // Bounds check for cursor
-    if (playCursor.index >= currentTrackData.length) {
-        playCursor.index = currentTrackData.length - 1;
-    }
+    // Always jump to end for easier comparison
+    playCursor.index = currentTrackData.length - 1;
+    playCursor.t = 1.0;
+    lastDrawnPoint = null;
     
     fullRedraw(playCursor.index);
     updateStats();
@@ -995,6 +1094,12 @@ function deletePoint(index) {
     
     currentTrackData.splice(index, 1);
     selectedIndex = -1; // Deselect after delete
+    
+    // Reset range selection
+    p1Index = -1;
+    p2Index = -1;
+    previewPath = null;
+    if (rangeActions) rangeActions.style.display = 'none';
     
     if (playCursor.index >= currentTrackData.length) {
         playCursor.index = Math.max(0, currentTrackData.length - 1);
@@ -1011,25 +1116,153 @@ function deletePoint(index) {
 
 // Interaction on Code Preview (Select & Delete)
 codePreview.addEventListener('click', (e) => {
-    // Handle Delete Button
+    const line = e.target.closest('.code-line');
+    if (!line) return;
+    const idx = parseInt(line.dataset.index);
+    if (isNaN(idx)) return;
+
+    // Handle Delete
     if (e.target.classList.contains('delete-btn')) {
-        const line = e.target.closest('.code-line');
-        if (line) deletePoint(parseInt(line.dataset.index));
+        deletePoint(idx);
+        return;
+    }
+    
+    // Handle Set P1
+    if (e.target.classList.contains('set-p1-btn')) {
+        p1Index = idx;
+        // If P2 was set, clear it if it's invalid or just to be safe? 
+        // Let's keep P2 if it's still distinct, otherwise clear.
+        if (p1Index === p2Index) p2Index = -1;
+        updateRangeUI();
+        fullRedraw(playCursor.index);
+        updateCodeScroll(playCursor.index);
         return;
     }
 
-    // Handle Selection (Just mark the point, don't jump the playhead)
-    const line = e.target.closest('.code-line');
-    if (line) {
-        const idx = parseInt(line.dataset.index);
-        if (!isNaN(idx)) {
-            selectedIndex = idx;
-            // Redraw everything to show the new selection dot on top
-            fullRedraw(playCursor.index);
-            updateCodeScroll(playCursor.index);
-        }
+    // Handle Set P2
+    if (e.target.classList.contains('set-p2-btn')) {
+        p2Index = idx;
+        updateRangeUI();
+        fullRedraw(playCursor.index);
+        updateCodeScroll(playCursor.index);
+        return;
     }
+
+    // Standard Selection (Click on row)
+    // Don't deselect if clicking a button inside the row
+    if (e.target.tagName === 'BUTTON') return;
+
+    selectedIndex = idx;
+    
+    // Note: We do NOT set P1/P2 on simple click anymore.
+    // We only set selectedIndex, which reveals the buttons.
+    
+    // Redraw
+    fullRedraw(playCursor.index);
+    updateCodeScroll(playCursor.index);
 });
+
+function updateRangeUI() {
+    if (p1Index !== -1 && p2Index !== -1 && p1Index !== p2Index) {
+        const start = Math.min(p1Index, p2Index);
+        const end = Math.max(p1Index, p2Index);
+        const count = end - start + 1;
+        
+        rangeCount.textContent = count;
+        rangeActions.style.display = 'block';
+        
+        generateSmoothPath(start, end);
+    } else {
+        rangeActions.style.display = 'none';
+        previewPath = null;
+    }
+}
+
+function cancelRange() {
+    p1Index = -1;
+    p2Index = -1;
+    previewPath = null;
+    rangeActions.style.display = 'none';
+    fullRedraw(playCursor.index);
+    updateCodeScroll(playCursor.index);
+}
+
+function applySmoothing() {
+    if (!previewPath || p1Index === -1 || p2Index === -1) return;
+    
+    saveUndoState();
+    
+    const start = Math.min(p1Index, p2Index);
+    const end = Math.max(p1Index, p2Index);
+    
+    const args = [start, end - start + 1, ...previewPath];
+    currentTrackData.splice.apply(currentTrackData, args);
+    
+    // Determine new indices after splice?
+    // Actually, simply canceling the range is enough.
+    
+    cancelRange(); // Reset UI
+    updateStats();
+}
+
+function generateSmoothPath(startIdx, endIdx) {
+    const start = Math.min(startIdx, endIdx);
+    const end = Math.max(startIdx, endIdx);
+    
+    if (end - start < 2) {
+        previewPath = null;
+        return;
+    }
+
+    const rangePoints = [];
+    for (let i = start; i <= end; i++) {
+        rangePoints.push({ ...currentTrackData[i] });
+    }
+
+    // Apply multiple passes of Laplacians/Moving Average smoothing
+    // This preserves the general shape but pulls points towards the average of their neighbors
+    const passes = 5;
+    const strength = 0.5; // How much to move towards the average (0-1)
+
+    let smoothed = rangePoints.map(p => ({ ...p }));
+
+    for (let p = 0; p < passes; p++) {
+        let nextPass = smoothed.map(p => ({ ...p }));
+        
+        // We keep the very first and very last point of the range fixed 
+        // to ensure they stay connected to P1 and P2 exactly.
+        for (let i = 1; i < smoothed.length - 1; i++) {
+            const prev = smoothed[i - 1];
+            const curr = smoothed[i];
+            const next = smoothed[i + 1];
+
+            // Average Theta and Rho
+            // Note: For Theta we need to handle the wrap-around
+            let avgRho = (prev.rho + next.rho) / 2;
+            
+            // Unwind next theta relative to prev to get correct average
+            let unwoundNextTheta = next.theta;
+            while (unwoundNextTheta - prev.theta > Math.PI) unwoundNextTheta -= Math.PI * 2;
+            while (unwoundNextTheta - prev.theta < -Math.PI) unwoundNextTheta += Math.PI * 2;
+            
+            let avgTheta = (prev.theta + unwoundNextTheta) / 2;
+
+            // Move current point towards average
+            nextPass[i].rho = curr.rho + (avgRho - curr.rho) * strength;
+            
+            // Re-align current theta to be near the average
+            let unwoundCurrTheta = curr.theta;
+            while (unwoundCurrTheta - avgTheta > Math.PI) unwoundCurrTheta -= Math.PI * 2;
+            while (unwoundCurrTheta - avgTheta < -Math.PI) unwoundCurrTheta += Math.PI * 2;
+            
+            nextPass[i].theta = unwoundCurrTheta + (avgTheta - unwoundCurrTheta) * strength;
+        }
+        smoothed = nextPass;
+    }
+    
+    previewPath = smoothed;
+}
+
 
 // Right-Click to Delete (only on selected/target line)
 codePreview.addEventListener('contextmenu', (e) => {
@@ -1046,6 +1279,105 @@ codePreview.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     deletePoint(idx);
 });
+
+function autoFixTrack() {
+    if (currentTrackData.length < 3) return;
+    
+    const intensity = parseFloat(document.getElementById('fixStrength').value) || 0.025;
+    const searchDist = parseInt(document.getElementById('fixWindow').value) || 25;
+    const protectionLimit = parseFloat(document.getElementById('fixProtect').value) || 0.90;
+    
+    let passes = Math.floor(intensity * 300); 
+    if (intensity > 0 && passes === 0) passes = 1;
+    if (passes <= 0) return;
+
+    saveUndoState();
+
+    // 1. Store original thetas and convert to Cartesian
+    const originalThetas = currentTrackData.map(p => p.theta);
+    let coords = currentTrackData.map(p => getXY(p.theta, p.rho));
+    const protectionMap = new Float32Array(coords.length).fill(1.0);
+    
+    // 2. Pre-calculate Anchor Protection (Geometric)
+    for (let i = 1; i < coords.length - 1; i++) {
+        const curr = coords[i];
+        
+        // Find lookback based on accumulated path distance
+        let lookBackIdx = i - 1;
+        let distAccumBack = 0;
+        while (lookBackIdx > 0) {
+            const d = Math.sqrt((coords[lookBackIdx+1].x - coords[lookBackIdx].x)**2 + (coords[lookBackIdx+1].y - coords[lookBackIdx].y)**2);
+            distAccumBack += d;
+            if (distAccumBack >= searchDist) break;
+            lookBackIdx--;
+        }
+        
+        // Find lookforward based on accumulated path distance
+        let lookForwardIdx = i + 1;
+        let distAccumForw = 0;
+        while (lookForwardIdx < coords.length - 1) {
+            const d = Math.sqrt((coords[lookForwardIdx].x - coords[lookForwardIdx-1].x)**2 + (coords[lookForwardIdx].y - coords[lookForwardIdx-1].y)**2);
+            distAccumForw += d;
+            if (distAccumForw >= searchDist) break;
+            lookForwardIdx++;
+        }
+        
+        const cStart = coords[lookBackIdx];
+        const cEnd = coords[lookForwardIdx];
+        
+        const distDirect = Math.sqrt((cEnd.x - cStart.x)**2 + (cEnd.y - cStart.y)**2);
+        const distPath = distAccumBack + distAccumForw;
+        
+        if (distPath > 0.1) {
+            const ratio = distDirect / distPath;
+            if (ratio < protectionLimit) {
+                protectionMap[i] = 0.0; // Anchor!
+            }
+        }
+    }
+
+    // 3. Smooth in XY
+    const strength = 0.5;
+    for (let p = 0; p < passes; p++) {
+        let nextCoords = coords.map(c => ({ ...c }));
+        for (let i = 1; i < coords.length - 1; i++) {
+            const localStrength = strength * protectionMap[i];
+            if (localStrength <= 0) continue;
+            
+            const prev = coords[i - 1];
+            const curr = coords[i];
+            const next = coords[i + 1];
+            
+            // Skip large jumps (Cleaning Spiral)
+            if (Math.sqrt((next.x - prev.x)**2 + (next.y - prev.y)**2) > MAX_RADIUS * 0.5) continue;
+
+            nextCoords[i].x = curr.x + ((prev.x + next.x) / 2 - curr.x) * localStrength;
+            nextCoords[i].y = curr.y + ((prev.y + next.y) / 2 - curr.y) * localStrength;
+        }
+        coords = nextCoords;
+    }
+
+    // 4. Convert back and ALIGN THE REGULAR WAY
+    const newTrackData = coords.map((c, i) => {
+        const relX = c.x - CENTER_X;
+        const relY = c.y - CENTER_Y;
+        let theta = Math.atan2(relY, relX);
+        const rho = Math.sqrt(relX*relX + relY*relY) / MAX_RADIUS;
+        
+        // Restore Winding (Rotation count)
+        const ref = originalThetas[i];
+        while (theta - ref > Math.PI) theta -= Math.PI * 2;
+        while (theta - ref < -Math.PI) theta += Math.PI * 2;
+        
+        return { theta, rho };
+    });
+
+    currentTrackData = newTrackData;
+    cancelRange();
+    fullRedraw();
+    updateStats();
+    updateCodeScroll(playCursor.index);
+}
 
 // Ctrl+Z for Undo
 window.addEventListener('keydown', (e) => {
