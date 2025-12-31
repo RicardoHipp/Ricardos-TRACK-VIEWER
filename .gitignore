@@ -5,7 +5,7 @@
 !*/
 
 # Erlaube diese wichtigen Dateien im Hauptverzeichnis:
-!Ricardos_TRACK_VIEWER.html
+!index.html
 !.gitignore
 !LICENSE
 !README.md
